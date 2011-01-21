@@ -24,34 +24,38 @@ namespace Inferis.Apis.Campfire
         private void StartStream()
         {
             streaming = true;
-            ThreadPool.QueueUserWorkItem(o => {
-                while (streaming) {
-                    try {
-                        var uri = string.Format("https://streaming.campfirenow.com/room/{0}/live.xml", Room);
-                        var request = (HttpWebRequest)WebRequest.Create(uri);
-                        request.KeepAlive = true;
-                        request.Headers.Add("Authorization", "Basic " + Convert.ToBase64String(Encoding.Default.GetBytes(token + ":x")));
+            try {
+                var uri = string.Format("https://streaming.campfirenow.com/room/{0}/live.xml", Room);
+                var request = (HttpWebRequest)WebRequest.Create(uri);
+#if !SILVERLIGHT
+                request.KeepAlive = true;
+#endif
+                request.Headers["Authorization"] = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(token + ":x"));
 
-                        var response = (HttpWebResponse)request.GetResponse();
-                        var stream = response.GetResponseStream();
-                        var reader = new CampfireMessageReader(stream);
-                        try {
-                            while (streaming) {
-                                OnMessageReceived(new MessageReceivedEventArgs(reader.Read()));
-                                Thread.Sleep(100);
-                            }
-                        }
-                        finally {
-                            reader.Close();
-                            stream.Close();
-                        }
-                    }
-                    catch (WebException) {
-                    }
-                    catch (TimeoutException) {
-                    }
+                request.BeginGetResponse(EndResponse, request);
+            }
+            catch (WebException) {
+            }
+            catch (TimeoutException) {
+            }
+        }
+
+        private void EndResponse(IAsyncResult ar)
+        {
+            var request = (HttpWebRequest) ar.AsyncState;
+            var response = request.EndGetResponse(ar);
+            var stream = response.GetResponseStream();
+            var reader = new CampfireMessageReader(stream);
+            try {
+                while (streaming) {
+                    OnMessageReceived(new MessageReceivedEventArgs(reader.Read()));
+                    Thread.Sleep(100);
                 }
-            });
+            }
+            finally {
+                reader.Close();
+                stream.Close();
+            }
         }
 
         public event MessageReceivedEventHandler MessageReceived;
